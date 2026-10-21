@@ -27,10 +27,12 @@ api_key = os.getenv("GOOGLE_API_KEY")
 client = OpenAI(api_key=api_key, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
 
 # Gemini Model 
-# Find all available models at: https://ai.google.dev/gemini-api/docs/models
-# "gemini-3-flash-preview" # gemini-3-flash-preview has a 1Mb context window.
-#  "gemini-3.1-flash-lite"
-model_name = "gemini-2.5-flash-lite" # gemini-2.0-flash also has a 1Mb context window, 
+# Find all available models, and their context window sizes, at: https://ai.google.dev/gemini-api/docs/models
+# Models get retired over time.
+# Validated as working on 2026-10-19: gemini-2.5-flash-lite, gemini-2.5-flash, gemini-3-flash-preview, gemini-3.5-flash-lite.
+# Free tier quotas are per model: if you get a 429 error, switching to another model is a quick workaround.
+model_name = "gemini-3.5-flash-lite"
+#model_name = "gemini-2.5-flash-lite"
 
 model_input_context_window_size_in_tokens = 10000 #  max input window size of the model in tokens. 
 # This is not the same as the context window size in characters, which can be much larger. 
@@ -59,7 +61,7 @@ crime_and_punishment_text = ""
 with open("docs/CrimeAndPunishment.txt", "r", encoding="utf-8") as f:
     crime_and_punishment_text = f.read()
 
-# Create a truncated version of the text to ensure it fits the 250k context window of the model
+# Create a truncated version of the text to ensure it fits the context window size chosen above
 if len(crime_and_punishment_text) > model_input_context_window_size_in_tokens * 4:  # Rough estimate: 1 token ≈ 4 characters
     print(f"Original text length: {len(crime_and_punishment_text)} characters. Truncating to {model_input_context_window_size_in_tokens * 4} characters to fit model context window.")     
     crime_and_punishment_text = crime_and_punishment_text[:model_input_context_window_size_in_tokens * 4]
@@ -76,7 +78,7 @@ injection_point = len(crime_and_punishment_text) // 2
 crime_and_punishment_text = crime_and_punishment_text[:injection_point] + CONTENT_INJECTION + crime_and_punishment_text[injection_point:]
 
 # Define the question and the prompt for the model
-question_about_denis = "What does this say about Denis?"
+question_about_denis = "What does this say about Denis Amselemovitch?"
 question_about_marmeladov = "What does this say about Marmeladov?"
 
 

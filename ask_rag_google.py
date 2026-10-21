@@ -21,7 +21,11 @@ load_dotenv()
 api_key = os.getenv("GOOGLE_API_KEY")
 client = OpenAI(api_key=api_key, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
 
-MODEL = "gemini-2.5-flash-lite" # gemini-2.0-flash, gemini-3-flash-preview, gemini-2.5-flash-lite
+# Gemini model used for generation. Any model listed at https://ai.google.dev/gemini-api/docs/models
+# (or returned by list_available_models() below) should work. Models get retired over time.
+# Validated as working on 2026-10-19: gemini-2.5-flash-lite, gemini-2.5-flash, gemini-3-flash-preview, gemini-3.5-flash-lite.
+# Free tier quotas are per model: if you get a 429 error, switching to another model is a quick workaround.
+MODEL = "gemini-3.5-flash-lite"
 STREAM_ON = True
 
 # Use this function to list available models and their details
@@ -37,9 +41,26 @@ def list_available_models():
 # This model runs on your machine. No API calls, no quotas, and very fast.
 local_ef = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
 
+# The document to index and search
+DOCUMENT_FILE = "docs/CrimeAndPunishment.txt"
+
+# Chunking settings
+# CHUNK_SIZE is in characters. 800 characters are about 190 tokens, which stays under the
+# 256-token limit of the embedding model (text beyond that limit is silently ignored when embedding).
+CHUNK_SIZE = 800
+# Each chunk starts with the last OVERLAP_PERCENT % of the previous chunk,
+# so that a sentence cut at the end of a chunk can still be found complete in the next one.
+OVERLAP_PERCENT = 10
+# Paragraphs shorter than this (in characters) are ignored: chapter headings, "He scowled.", ...
+MIN_PARAGRAPH_LENGTH = 20
+
 # We'll use a persistent client so you don't have to re-index every time you run the script
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
-COLLECTION_NAME = "literary_analysis_local"
+# One collection per document and chunking configuration: if you change the document or the settings above,
+# the script will offer to build a new index for them.
+# Note: the name depends on the document's file NAME, not on its content.
+DOCUMENT_NAME = os.path.splitext(os.path.basename(DOCUMENT_FILE))[0]
+COLLECTION_NAME = f"{DOCUMENT_NAME}_{CHUNK_SIZE}_{OVERLAP_PERCENT}_{MIN_PARAGRAPH_LENGTH}"
 
 # Create or get the collection where we will store our document chunks and their embeddings
 collection = chroma_client.get_or_create_collection(
@@ -61,14 +82,27 @@ def index_document(filepath):
     with open(filepath, "r", encoding="utf-8") as f:
         text = f.read()
     
-    # Simple paragraph chunking
-    chunks = [c.strip() for c in text.split("\n\n") if len(c.strip()) > 100]
-    
+    # Watch out: paragraphs shorter than MIN_PARAGRAPH_LENGTH characters will be ignored
+    # Question: (when) does it make sense to ignore very short paragraphs?
+    paragraphs = [p.strip() for p in text.split("\n\n") if len(p.strip()) >= MIN_PARAGRAPH_LENGTH]
+    text = "\n\n".join(paragraphs)
+
+    # Simple fixed-size chunking with overlap:
+    # a window of CHUNK_SIZE characters slides over the text, moving forward by (CHUNK_SIZE - overlap)
+    # characters each time. Chunks can start or end in the middle of a word or a sentence.
+    overlap = CHUNK_SIZE * OVERLAP_PERCENT // 100
+    step = CHUNK_SIZE - overlap
+    chunks = [text[i:i + CHUNK_SIZE] for i in range(0, len(text), step)]
+
     # Indexing locally is much faster—no batching for quotas needed!
-    collection.add(
-        documents=chunks,
-        ids=[f"id_{i}" for i in range(len(chunks))]
-    )
+    # But ChromaDB accepts at most ~5000 chunks per call, so with small chunk sizes we add them in batches.
+    BATCH_SIZE = 5000
+    for start in range(0, len(chunks), BATCH_SIZE):
+        batch = chunks[start:start + BATCH_SIZE]
+        collection.add(
+            documents=batch,
+            ids=[f"id_{i}" for i in range(start, start + len(batch))]
+        )
     print(f"Indexed {len(chunks)} chunks locally.")
 
 
@@ -117,9 +151,16 @@ def main():
     # Optional: List Google models
     # list_available_models()
 
-    # Only index once
+    # Only index once per document and chunking configuration, and only if the user agrees
     if collection.count() == 0:
-        index_document("docs/CrimeAndPunishment.txt")
+        answer = input(f"No index found for this document and these chunking settings (collection '{COLLECTION_NAME}').\n"
+                       f"Index {DOCUMENT_FILE} now? [y/N] ")
+        if answer.strip().lower() != "y":
+            print("Indexing cancelled. Nothing to search in, exiting.")
+            return
+        index_document(DOCUMENT_FILE)
+    else:
+        print(f"Using existing index '{COLLECTION_NAME}' ({collection.count()} chunks).")
 
     question = "What does this say about Denis?"
     

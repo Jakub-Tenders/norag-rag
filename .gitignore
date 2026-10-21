@@ -23,3 +23,6 @@ chroma_db/
 # OS/editor files
 .DS_Store
 .vscode/
+
+# Files located in the future/ directory must be ignored
+future/

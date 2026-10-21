@@ -5,7 +5,7 @@ This workspace contains 2 Python applications to compare **NoRAG** (full-context
 ## Applications
 
 1. `ask_norag_google.py`
-- NoRAG with Google Gemini via OpenAI SDK (`gemini-2.5-flash-lite`).
+- NoRAG with Google Gemini via OpenAI SDK (`gemini-3.5-flash-lite`).
 - Loads `docs/CrimeAndPunishment.txt`, injects a "needle" passage, and runs two direct large-context questions:
 	- a baseline question about Marmeladov (present in the original book)
 	- a needle question about Denis (the injected passage)
@@ -71,8 +71,8 @@ python ask_rag_google.py
 ## Notes
 
 - Both applications use the OpenAI SDK to interact with Google Gemini via Google's OpenAI-compatible endpoint.
-- The RAG app indexes text chunks into `chroma_db/` and reuses them across runs.
-- First RAG run may take longer due to indexing.
+- The RAG app splits the text into fixed-size chunks with an overlap (`CHUNK_SIZE`, `OVERLAP_PERCENT` and `MIN_PARAGRAPH_LENGTH` at the top of the script), indexes them into `chroma_db/` and reuses them across runs.
+- There is one index per document (`DOCUMENT_FILE`) and chunking configuration. When no index exists for the current document and settings, the script asks before building one (this takes a little while).
 - Debug prompt printing can be enabled by passing `debug=True` in the NoRAG app.
 - RAG app prints retrieved context for verification.
 - Streaming output is enabled by default in both applications (controlled by `STREAM_ON` variable).
