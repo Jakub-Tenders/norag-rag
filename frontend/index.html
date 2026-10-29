@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RAG V1</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+  section { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+  h2 { margin-top: 0; font-size: 1.1rem; }
+  label { margin-right: 1rem; }
+  input[type=number] { width: 5rem; }
+  #q { width: 75%; }
+  .ref { cursor: pointer; color: #06c; margin: .4rem 0 0; }
+  pre { white-space: pre-wrap; background: #f5f5f5; color: #111; padding: .5rem; border-radius: 6px; }
+  .error { color: #b00; }
+  .warn { color: #a60; }
+</style>
+</head>
+<body>
+<h1>RAG V1</h1>
+
+<section>
+  <h2>Documents</h2>
+  <ul id="docs"></ul>
+  <input type="file" id="file" accept=".md,.txt">
+  <button id="upload">Upload</button>
+  <p id="docmsg" class="error"></p>
+</section>
+
+<section>
+  <h2>Settings</h2>
+  <label>Chunk size (chars) <input type="number" id="size" value="800"></label>
+  <label>Overlap (%) <input type="number" id="overlap" value="10"></label>
+  <label>Top-k <input type="number" id="topk" value="5"></label>
+</section>
+
+<section>
+  <h2>Question</h2>
+  <input id="q" placeholder="Ask a question about the selected documents">
+  <button id="ask">Ask</button>
+  <div id="out"></div>
+</section>
+
+<script>
+const $ = id => document.getElementById(id);
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const data = await r.json().catch(() => null);
+  if (!r.ok) {
+    const d = data && data.detail;
+    if (d && d.message) throw new Error(d.message);
+    if (Array.isArray(d)) throw new Error("Invalid input: " + d.map(e => e.msg).join(", "));
+    throw new Error("Error " + r.status);
+  }
+  return data;
+}
+
+async function loadDocs() {
+  const selected = new Set([...document.querySelectorAll("#docs input:checked")].map(c => c.value));
+  const docs = await api("/api/documents");
+  const ul = $("docs");
+  ul.textContent = "";
+  for (const d of docs) {
+    const li = document.createElement("li");
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.value = d; cb.checked = selected.has(d);
+    const name = document.createElement("span");
+    name.textContent = " " + d + " ";
+    const del = document.createElement("button");
+    del.textContent = "Delete";
+    del.onclick = async () => {
+      if (!confirm("Delete " + d + "?")) return;
+      try {
+        await api("/api/documents/" + encodeURIComponent(d), { method: "DELETE" });
+        $("docmsg").textContent = "";
+        await loadDocs();
+      } catch (e) { $("docmsg").textContent = e.message; }
+    };
+    li.append(cb, name, del);
+    ul.append(li);
+  }
+}
+
+$("upload").onclick = async () => {
+  const f = $("file").files[0];
+  if (!f) { $("docmsg").textContent = "Choose a file first."; return; }
+  const fd = new FormData();
+  fd.append("file", f);
+  try {
+    await api("/api/documents", { method: "POST", body: fd });
+    $("docmsg").textContent = "";
+    $("file").value = "";
+    await loadDocs();
+  } catch (e) { $("docmsg").textContent = e.message; }
+};
+
+function para(text, cls) {
+  const p = document.createElement("p");
+  if (cls) p.className = cls;
+  p.textContent = text;
+  return p;
+}
+
+// list of passages; clicking one shows the chunk text
+function passages(title, items) {
+  const box = document.createElement("div");
+  box.append(para(title));
+  for (const h of items) {
+    const head = document.createElement("div");
+    head.className = "ref";
+    head.textContent = (h.n ? "[" + h.n + "] " : "") + h.doc + " (chars " + h.start + "-" + h.end + ")";
+    const pre = document.createElement("pre");
+    pre.textContent = h.text;
+    pre.hidden = true;
+    head.onclick = () => { pre.hidden = !pre.hidden; };
+    box.append(head, pre);
+  }
+  return box;
+}
+
+$("ask").onclick = async () => {
+  const out = $("out");
+  out.textContent = "";
+  const docs = [...document.querySelectorAll("#docs input:checked")].map(c => c.value);
+  const body = {
+    question: $("q").value,
+    docs,
+    cfg: { chunk_size: +$("size").value, overlap_pct: +$("overlap").value, top_k: +$("topk").value }
+  };
+  $("ask").disabled = true;
+  out.append(para("Thinking... (a new chunk size or overlap re-indexes the documents first)"));
+  try {
+    const r = await api("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    out.textContent = "";
+    if (r.status === "ok") {
+      out.append(para(r.answer), passages("References (click to open the chunk):", r.references));
+    } else {
+      out.append(para(r.message, "warn"), passages("Retrieved passages:", r.retrieved));
+    }
+  } catch (e) {
+    out.textContent = "";
+    out.append(para(e.message, "error"));
+  } finally {
+    $("ask").disabled = false;
+  }
+};
+
+loadDocs().catch(e => { $("docmsg").textContent = e.message; });
+</script>
+</body>
+</html>

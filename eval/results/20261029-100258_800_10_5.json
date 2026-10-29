@@ -1,0 +1,59 @@
+{
+  "cfg": {
+    "chunk_size": 800,
+    "overlap_pct": 10,
+    "top_k": 5
+  },
+  "n_questions": 12,
+  "hit_rate": 0.75,
+  "results": [
+    {
+      "id": "q01",
+      "hit": false
+    },
+    {
+      "id": "q02",
+      "hit": false
+    },
+    {
+      "id": "q03",
+      "hit": true
+    },
+    {
+      "id": "q04",
+      "hit": true
+    },
+    {
+      "id": "q05",
+      "hit": true
+    },
+    {
+      "id": "q06",
+      "hit": true
+    },
+    {
+      "id": "q07",
+      "hit": true
+    },
+    {
+      "id": "q08",
+      "hit": false
+    },
+    {
+      "id": "q09",
+      "hit": true
+    },
+    {
+      "id": "q10",
+      "hit": true
+    },
+    {
+      "id": "q11",
+      "hit": true
+    },
+    {
+      "id": "q12",
+      "hit": true
+    }
+  ]
+}
